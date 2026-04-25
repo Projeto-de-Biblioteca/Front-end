@@ -10,19 +10,16 @@ const cancelEdit  = document.getElementById('cancel-edit');
 const formTitle   = document.getElementById('form-title');
 const refreshBtn  = document.getElementById('refresh-books');
 
-function getBooks() {
-  return JSON.parse(localStorage.getItem('biblioteca')) || [];
-}
+// URL da API
+const API_URL = 'https://back-end-black.vercel.app/livros';
 
-function saveBooks(books) {
-  localStorage.setItem('biblioteca', JSON.stringify(books));
-}
-
+// Função para exibir mensagens na tela
 function showMessage(text) {
   message.textContent = text;
   setTimeout(() => { message.textContent = ''; }, 3000);
 }
 
+// Limpar o formulário e resetar estados
 function clearForm() {
   bookForm.reset();
   bookId.value = '';
@@ -30,81 +27,128 @@ function clearForm() {
   cancelEdit.classList.add('d-none');
 }
 
-function loadBooks() {
-  const books = getBooks();
+// READ: Carregar livros do MongoDB
+async function loadBooks() {
+  try {
+    const response = await fetch(API_URL);
+    const books = await response.json();
 
-  if (!books.length) {
-    booksList.innerHTML = '<p class="text-center text-muted">Nenhum livro na estante.</p>';
-    return;
-  }
+    if (!books || books.length === 0) {
+      booksList.innerHTML = '<p class="text-center text-muted">Nenhum livro na estante.</p>';
+      return;
+    }
 
-  booksList.innerHTML = books.map(book => `
-    <div class="col-md-6 mb-3">
-      <div class="list-group-item">
-        <h3 class="h5">${book.title}</h3>
-        <p class="mb-1"><strong>Autor:</strong> ${book.authorName}</p>
-        <p class="mb-1 small" style="color:#94a3b8">Gênero: ${book.genre} | Páginas: ${book.pages || 'N/A'}</p>
-        <div class="mt-3 d-flex gap-2">
-          <button class="btn btn-sm btn-warning" onclick="editBook('${book.id}')">Editar</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteBook('${book.id}')">Excluir</button>
+    booksList.innerHTML = books.map(book => `
+      <div class="col-md-6 mb-3">
+        <div class="list-group-item">
+          <h3 class="h5">${book.title}</h3>
+          <p class="mb-1"><strong>Autor:</strong> ${book.authorName}</p>
+          <p class="mb-1 small" style="color:#94a3b8">Gênero: ${book.genre} | Páginas: ${book.pages}</p>
+          <div class="mt-3 d-flex gap-2">
+            <button class="btn btn-sm btn-warning" onclick="editBook('${book._id}')">Editar</button>
+            <button class="btn btn-sm btn-danger" onclick="deleteBook('${book._id}')">Excluir</button>
+          </div>
         </div>
       </div>
-    </div>
-  `).join('');
+    `).join('');
+  } catch (error) {
+    console.error('Erro ao carregar:', error);
+    showMessage('Erro ao conectar com o servidor.');
+  }
 }
 
-bookForm.addEventListener('submit', (e) => {
+// CREATE / UPDATE: Salvar livro
+bookForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-
-  const books = getBooks();
+  
   const id = bookId.value;
-
   const data = {
-    id: id || Date.now().toString(),
     title: title.value,
     authorName: authorName.value,
     genre: genre.value,
-    pages: pages.value
+    pages: Number(pages.value)
   };
 
-  if (id) {
-    const idx = books.findIndex(b => b.id === id);
-    books[idx] = data;
-    showMessage('Livro atualizado!');
-  } else {
-    books.push(data);
-    showMessage('Livro adicionado!');
-  }
+  try {
+    let response;
+    
+    if (id) {
+      // Rota de Edição
+      response = await fetch(`${API_URL}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if(response.ok) showMessage('Livro atualizado com sucesso!');
+    } else {
+      // Rota de Criação
+      response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if(response.ok) showMessage('Livro adicionado à estante!');
+    }
 
-  saveBooks(books);
-  clearForm();
-  loadBooks();
+    if (response.ok) {
+      clearForm();
+      loadBooks();
+    }
+  } catch (error) {
+    showMessage('Erro ao salvar o livro.');
+  }
 });
 
-window.editBook = function(id) {
-  const book = getBooks().find(b => b.id === id);
-  if (!book) return;
+// Preparar formulário para edição
+window.editBook = async function(id) {
+  try {
+    // Busca todos e filtra o correto
+    const response = await fetch(API_URL);
+    const books = await response.json();
+    const book = books.find(b => b._id === id);
 
-  bookId.value = book.id;
-  title.value = book.title;
-  authorName.value = book.authorName;
-  genre.value = book.genre;
-  pages.value = book.pages;
+    if (!book) return;
 
-  formTitle.textContent = 'Editar Livro';
-  cancelEdit.classList.remove('d-none');
-  window.scrollTo(0, 0);
+    bookId.value = book._id;
+    title.value = book.title;
+    authorName.value = book.authorName;
+    genre.value = book.genre;
+    pages.value = book.pages;
+
+    formTitle.textContent = 'Editar Livro';
+    cancelEdit.classList.remove('d-none');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (error) {
+    showMessage('Erro ao buscar dados do livro.');
+  }
 };
 
-window.deleteBook = function(id) {
-  if (!confirm('Deseja mesmo remover este livro?')) return;
-  const books = getBooks().filter(b => b.id !== id);
-  saveBooks(books);
-  showMessage('Livro removido.');
-  loadBooks();
+// DELETE: Remover livro
+window.deleteBook = async function(id) {
+  if (!confirm('Deseja realmente excluir este livro?')) return;
+
+  try {
+    const response = await fetch(`${API_URL}/${id}`, {
+      method: 'DELETE'
+    });
+
+    if (response.ok) {
+      showMessage('Livro removido!');
+      loadBooks();
+    }
+  } catch (error) {
+    showMessage('Erro ao excluir o livro.');
+  }
 };
 
+// Botão Cancelar Edição
 cancelEdit.addEventListener('click', clearForm);
+
+// Botão Atualizar Manual
 refreshBtn.addEventListener('click', loadBooks);
 
-loadBooks();
+// Inicializar a lista ao abrir a página
+document.addEventListener('DOMContentLoaded', () => {
+  loadBooks();
+  if (typeof lucide !== 'undefined') lucide.createIcons();
+});
