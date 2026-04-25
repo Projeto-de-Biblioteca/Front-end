@@ -13,3 +13,4 @@ Este repositório contém a interface da aplicação de gerenciamento de acervo 
 2. Abra o arquivo `index.html` em seu navegador ou utilize a extensão **Live Server** do VS Code.
 
 ## Link do Deploy
+Você pode acessar o projeto rodando online aqui: [Minha Biblioteca Online](https://front-end-chi-five.vercel.app)
